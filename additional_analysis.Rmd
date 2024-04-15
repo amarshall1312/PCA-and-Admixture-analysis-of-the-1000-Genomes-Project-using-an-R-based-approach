@@ -1,0 +1,46 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+get_maf_data <- function(vcf_data){
+  mafdata <- maf(vcf_data)
+  
+  mafdata <- mafdata %>% 
+      as_tibble() %>% #convert t tibble for manipulation
+  mutate(percent_frequency = Frequency * 100) %>% # calculate frequency as percentage
+  cbind(row.names(mafdata)) %>% # add SNPIDs
+  relocate("row.names(mafdata)") # put SNPID at the front
+  
+  names(mafdata)[names(mafdata) == "row.names(mafdata)"] <-  "SNP_ID" # rename SNPID
+  
+  mafdata_id <- mafdata_id %>% 
+  mutate(freq_range = case_when(percent_frequency == 0 ~ "0",
+                                percent_frequency < 0.01 & percent_frequency > 0 ~ "0.00-0.01",
+                                percent_frequency < 0.1 & percent_frequency > 0.01 ~ "0.01-0.10",
+                                percent_frequency >= 0.1 & percent_frequency < 1 ~ "0.10-1.00",
+                                percent_frequency >= 1 & percent_frequency < 10 ~ "1.00-10.00",
+                                percent_frequency >= 10 ~ ">10.00"))
+  mafplot <- mafdata_id %>% 
+    group_by(freq_range) %>%
+    count_() %>% 
+    as_tibble() %>% 
+    ggplot() + aes(x = freq_range, y = n) + geom_col()
+  print(mafplot)
+  
+  return(mafdata)
+  
+  
+}
+```
+
+```{r}
+# finding the continental poulation distribution of the data set
+population_data %>% 
+  group_by(super_pop) %>%  
+  count_("super_pop") %>% 
+  mutate(proportion = (n/2504)*100)
+    # distribution is not even nor does it match the proportions of continental populations - However, it does have an increased focus on african populations which may have other benefits than being representative of continental distributions
+
+```

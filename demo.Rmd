@@ -1,0 +1,93 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+example_snps <- prepare_snp_data(here("data/sample_data/HTT.gz"),snp_names = F)
+
+example_pca_data <- prepare_pca_data(example_snps)
+
+plot_pca(example_pca_data, "HTT", super_pop)
+
+example_admixture_data <- create_admixture_data(example_snps, kmin = 3, kmax = 5)
+
+multi_pca(example_snps, selection_vector = superpop_combinations[1:4,], filterby = super_pop, naming = "PCA plot example")
+
+create_admixure_super_pop(example_admixture_data, 3)
+create_admixure_pop(example_admixture_data, 3)
+
+ggsave(here("output/HTT_admixture_pop.jpg"), width = 25000, height = 10000, units = "px", limitsize = FALSE)
+```
+
+```{r}
+chrom18 <- prepare_snp_data(here("data/sample_data/Chrom18-1mil-2.5mil.gz"), snp_names = F)
+
+chrom18admixture <- create_admixture_data(chrom18,kmin = 2, kmax = 6, run_choice = 10)
+
+chrom18pca <- prepare_pca_data(chrom18)
+plot_pca(chrom18pca, plot_name = "~45k SNPs Chrom18 PCA")
+ggsave(here("output/Chrom18_pca.jpg"), width = 1920, height = 1080, units = "px")
+
+create_admixure_pop(chrom18admixture, 3)
+ggsave(here("output/Chrom18K3_pop.jpg"), width = 25000, height = 10000, units = "px", limitsize = FALSE)
+```
+```{r}
+ALDH <- prepare_snp_data(here("data/sample_data/ALDH2.gz"), snp_names = F)
+betag <- prepare_snp_data(here("data/sample_data/Beta-globin.gz"), snp_names = F)
+CYP <- prepare_snp_data(here("data/sample_data/CYP1A2.gz"), snp_names = F)
+HTT <- prepare_snp_data(here("data/sample_data/HTT.gz"), snp_names = F)
+LCT <- prepare_snp_data(here("data/sample_data/LCT.gz"), snp_names = F)
+MC1R <- prepare_snp_data(here("data/sample_data/MC1R.gz"), snp_names = F)
+test <- read.vcfR(here("data/sample_data/MC1R.gz"))
+testgt <- extract.gt(test, IDtoRowNames = T)
+
+
+```
+Producing figures for write up
+```{r}
+HTT <- prepare_snp_data(here("data/sample_data/HTT.gz"), snp_names = F)
+HTTpca <- prepare_pca_data(HTT)
+chrom8 <- prepare_snp_data(here("data/sample_data/Chrom8-1-500000.vcf.gz"), snp_names = F)
+chrom8pca <- prepare_pca_data(chrom8)
+
+plot_pca(HTTpca, plot_name = "PCA plot of the HTT gene region")
+plot_pca(chrom8pca, plot_name = "PCA plot of the chrom8 gene region")
+
+HTT <- prepare_snp_data(here("data/sample_data/HTT.gz"), snp_names = F)
+HTTpca <- prepare_pca_data(HTT)
+plot_pca(HTTpca, plot_name = "PCA plot of the HTT gene region (6076SNPs) from the 2504 samples of the 1kGP")
+ggsave(here("output/Figures/HTTPCA.jpeg"), units = "px", height = 2160, width = 3840)
+HTTadmix <- create_admixture_data(HTT, kmin = 2, kmax = 4, run_choice = 10)
+create_admixure_pop(HTTadmix, clusters = 4, plot_name = "Admixture plot of the HTT gene region (6,076 SNPs) from the 2504 samples of the 1kGP sorted by population - K = 4")
+ggsave(here("output/Figures/HTTadmixtureK4.jpeg"),width = 25000, height = 14063, units = "px", limitsize = FALSE)
+
+MC1R <- prepare_snp_data(here("data/sample_data/MC1R.gz"), snp_names = F)
+MC1Rpca <- prepare_pca_data(MC1R)
+plot_pca(MC1Rpca, plot_name = "PCA plot of the MC1R gene region (406 SNPs) from the 2504 samples of the 1kGP")
+ggsave(here("output/Figures/MC1RPCA.jpeg"), units = "px", height = 2160, width = 3840)
+MC1Radmix <- create_admixture_data(MC1R, kmin = 3, kmax = 5, run_choice = 10)
+create_admixure_pop(MC1Radmix, clusters = 5, plot_name = "Admixture plot of the MC1R gene region (406 SNPs) from the 2504 samples of the 1kGP sorted by population")
+ggsave(here("output/Figures/MC1RadmixtureK5.jpeg"), width = 25000, height = 14063, units = "px", limitsize = F)
+
+Chrom18 <- prepare_snp_data(here("data/sample_data/Chrom18-1mil-2.5mil.gz"), snp_names = F)
+Chrom18pca <- prepare_pca_data(Chrom18)
+plot_pca(Chrom18pca, plot_name = "PCA plot of the first 42,775 SNPs in chromosome 18 from the 2504 samples of the 1kGP")
+ggsave(here("output/Figures/Chromosome18PCA.png"),units = "px", width = 3840, height = 2160)
+Chrom18admix <- create_admixture_data(Chrom18, kmin = 2, kmax = 4, run_choice = 10)
+create_admixure_pop(Chrom18admix, clusters = 4,plot_name = "Admixture plot of the first 42,775 SNPs in chromosome 18 from the 2504 samples of the 1kGP sorted by population - K = 4")
+ggsave(here("output/Figures/Chromosome18AdmixtureK4.jpeg"),width = 25000, height = 14063, units = "px", limitsize = FALSE)
+
+LCT <- prepare_snp_data(here("data/sample_data/LCT.gz"), snp_names = F)
+LCTpca <- prepare_pca_data(LCT)
+plot_pca(LCTpca, plot_name = "Admixture plot of the LCT gene region (1382 SNPs) from the 2504 samples of the 1kGP sorted by population")
+ggsave(here("output/Figures/LCTpca.png"), units = "px", width = 3840, height = 2160)
+
+multipcachrom8 <- multi_pca(chrom8, selection_vector = superpop_combinations, filterby = super_pop, naming = "Multi PCA plot of the first 14,657 SNPs in chromosome 8 from the 2504 samples of the 1kGP")
+
+pdf(here("output/MC1Rallplots.pdf"), width = 8, height = 4.5)
+multipcaMC1R <- multi_pca(MC1R, selection_vector = superpop_combinations, filterby = super_pop, naming = "Multi PCA plot of the MC1R gene region (406 SNPs) from the 2504 samples of the 1kGP")
+dev.off()
+ggsave(here("output/Figures/multiplot.pdf"))
+```
+

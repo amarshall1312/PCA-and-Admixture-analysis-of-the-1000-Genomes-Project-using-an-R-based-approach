@@ -1,0 +1,45 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Loading packages
+```{r}
+packages <- c("ggplot2","tidyverse","vcfR","here", "ape", "dplyr", "factoextra", "DT", "FactoMineR", "VariantAnnotation", "httr", "curl", "jsonlite", "biomaRt", "Rsamtools", "LEA", "readxl")
+lapply(packages, FUN = function(X) {
+    do.call("require", list(X)) 
+})
+rm(packages)
+```
+
+Reading in population data
+```{r}
+# reading text file containing population data for each sample in 1kGP
+population_data <- read.csv2(here("data/populations.txt"), sep = "\t")[,1:4] %>% # removing excess columns
+  rename("sample" = "sample_ID") # renaming the sample ID column to match across data frames
+```
+
+Formatting genomic data
+```{r}
+prepare_snp_data <- function(input_data, snp_names = TRUE){ # Option to remove snp_names as some files report duplicate names. removal should not impact pca and admixture anaylsis
+  read_vcf_df <- read.vcfR(input_data) # reading from vcf
+  gt_data <- extract.gt(read_vcf_df, as.numeric = F, IDtoRowNames = snp_names) # extracting gt data
+  snp_indices <- !(is.indel(read_vcf_df)) # identifying indels
+  snp_gt_data <- gt_data[snp_indices, ] # removing indels
+  transposed_gt_snps <- t(snp_gt_data) # transposing table (samples > rows)
+  maternal_snps <- as_tibble(transposed_gt_snps) %>%
+  mutate_all(~substr(., 1, 1)) %>% 
+  mutate_all(~as.numeric(.)) # extracting maternal snps
+  paternal_snps <- as_tibble(transposed_gt_snps) %>% 
+  mutate_all(~substr(., 3, 3)) %>% 
+  mutate_all(~as.numeric(.)) # extracting paternal snps
+  sample_ID <- row.names(transposed_gt_snps) # creating sampleID vector
+  dual_snps <- paternal_snps[] + maternal_snps[] # adding snps together
+  clean_snps <- cbind(sample_ID, dual_snps) # adding sampleID vector
+  clean_snps <- clean_snps %>% # removing any snps with 2nd or 3rd alternate alleles for admixture analysis
+   select_if(~ !any(. %in% c(3,4,5,6)))
+  clean_snps <- left_join(population_data, clean_snps, by = "sample_ID") # attaching population data
+  return(clean_snps) # returning final snps
+# further development could add to this function or additional function to extract snps from sex chromosomes
+  }
+```

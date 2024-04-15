@@ -1,0 +1,16 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+#using variant annotation to make a merged vcf file that can then be manipulated using vcfR
+#reading two files
+merge_chrom1 <- readVcf(here("data/chrom1.gz"))
+merge_chrom2 <- readVcf(here("data/chrom2.gz"))
+#merging
+combinded <- rbind(merge_chrom1,merge_chrom2)
+#writing to merged file
+writeVcf(combinded, here("data/mergetest.vcf"))
+```
+

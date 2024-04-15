@@ -1,0 +1,200 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Loading packages
+```{r}
+packages <- c("ggplot2","tidyverse","vcfR","here", "ape", "dplyr", "factoextra", "DT", "FactoMineR", "VariantAnnotation", "httr", "curl", "jsonlite", "biomaRt", "Rsamtools", "LEA", "readxl")
+lapply(packages, FUN = function(X) {
+    do.call("require", list(X)) 
+})
+rm(packages)
+```
+
+Reading in population data
+```{r}
+# reading text file containing population data for each sample in 1kGP
+population_data <- read.csv2(here("data/required_data/populations.txt"), sep = "\t")[,1:4] %>% # removing excess columns
+  rename("sample" = "sample_ID") # renaming the sample ID column to match across data frames
+```
+
+```{r}
+# creating sample dfs for multi-pca runs
+superpop_combinations <- read_excel(here("data/required_data/superpops.xlsx"), col_names = F)[-1] # 10 vectors
+pop_combinations <- read_excel(here("data/required_data/pops.xlsx"), col_names = F) # 4 vectors
+
+```
+
+Formatting genomic data
+```{r}
+prepare_snp_data <- function(input_data, snp_names = TRUE){
+  read_vcf_df <- read.vcfR(input_data) # reading from vcf
+  gt_data <- extract.gt(read_vcf_df, as.numeric = F, IDtoRowNames = snp_names) # extracting gt data
+  snp_indices <- !(is.indel(read_vcf_df)) # identifying indels
+  snp_gt_data <- gt_data[snp_indices, ] # removing indels
+  transposed_gt_snps <- t(snp_gt_data) # transposing table (samples > rows)
+  maternal_snps <- as_tibble(transposed_gt_snps) %>%
+  mutate_all(~substr(., 1, 1)) %>% 
+  mutate_all(~as.numeric(.)) # extracting maternal snps
+  paternal_snps <- as_tibble(transposed_gt_snps) %>% 
+  mutate_all(~substr(., 3, 3)) %>% 
+  mutate_all(~as.numeric(.)) # extracting paternal snps
+  sample_ID <- row.names(transposed_gt_snps) # creating sampleID vector
+  dual_snps <- paternal_snps[] + maternal_snps[] # adding snps together
+  clean_snps <- cbind(sample_ID, dual_snps) # adding sampleID vector
+  clean_snps <- clean_snps %>% # removing any snps with 2nd or 3rd alternate alleles for admixture analysis
+   select_if(~ !any(. %in% c(3,4,5,6)))
+  clean_snps <- left_join(population_data, clean_snps, by = "sample_ID") # attaching population data
+  return(clean_snps) # returning final snps
+# further development could add to this function or additional function to extract snps from sex chromosomes
+  }
+```
+
+Perform pca
+```{r}
+prepare_pca_data <- function(snp_df){
+  pca_analysis <- FactoMineR::PCA(snp_df[-(1:4)], graph = F) # assumes that first 4 columns are sample data so if not snps will be excluded
+  pc1_pc2_df <- as.data.frame(pca_analysis$ind$coord[,1:2]) # selecting the first 2 principal components
+  pc1_pc2_df <- cbind(snp_df[,1], pc1_pc2_df) %>% # adding back sampleID assuming they are present in col 1 of given df
+    rename("snp_df[, 1]" = "sample_ID")
+  pc1_pc2_df <- left_join(pc1_pc2_df, population_data, by = "sample_ID") # joining population data
+  return(pc1_pc2_df)
+}
+```
+
+Plot pca - standard pca plot with name selection, and colour by selection
+```{r}
+plot_pca <- function(pca_df, plot_name = "PCA plot", col_by = super_pop){
+pca_plot <- pca_df %>% 
+  ggplot() + geom_point(aes(x = Dim.1, y = Dim.2, color = {{col_by}})) + geom_hline(yintercept = 0, linetype = "longdash") + geom_vline(xintercept = 0, linetype = "longdash") + labs(title = paste(plot_name), y = "PC2", x = "PC1") # producing plot of principal components 1 & 2
+print(pca_plot)
+}
+```
+
+Quick pca - takes unprepared vcf data and calls on other functions to make everything from one line
+```{r}
+quick_pca <- function(vcf_data, plot_title = "Default_title"){
+  plot_pca(prepare_pca_data(prepare_snp_data(vcf_data)),plot_title)
+}
+```
+
+Multi pca analysis
+```{r}
+# plotting pca function - (Need to allow selection of colour by, currently colours by super_pop regardless)
+# could add save function - Also may need to switch back from ggplot
+multi_plot_pca <- function(pca_df, plot_name = "PCA plot"){
+pca_plot <- pca_df %>% 
+  ggplot() + geom_point(aes(x = Dim.1, y = Dim.2, color = super_pop)) + 
+  geom_hline(yintercept = 0, linetype = "longdash") + geom_vline(xintercept = 0, linetype = "longdash") + 
+  labs(title = paste(plot_name), y = "PC2", x = "PC1")
+
+  print(pca_plot)
+}
+
+
+# running multi pca analysis - requires processed snps, vector to filter by (+ direction of what to filter by) and name is optional - Could filter by gender though there is only 3 combinations - M, F, MF
+multi_pca <- function(df, selection_vector, filterby, naming = "PCA plot"){
+for(i in 1:nrow(selection_vector)){ #looping for each row in vector table
+  row_vector <- unlist(selection_vector[i,]) # Each row becomes filter criteria
+  filtered_data <- df %>% 
+    filter({{filterby}} %in% row_vector) # filtering snps by vector
+  pcatst <- multi_plot_pca(prepare_pca_data(filtered_data), plot_name = paste0(i, ": ", naming)) # running pca and plotting for each criteria
+  }
+}
+```
+
+Creating directory for admixture data
+```{r}
+dir.create(here("code/LEA_analyses"))
+```
+
+Running an admixture analysis
+```{r}
+#requires a set of prapared snps, containing only values 0,1,2,9
+#by default assumes that the first 4 columns arent snp data but metadata that need removing for analysis
+#function will automatically write .geno and .lfmm files with a default name - Could add argument to function for choosing the name - same with working directory
+  #working directory is also assumed to be created prior and not created by function
+#default values are not set for K arguments but a default argument of repetitions is
+create_admixture_data <- function(snp_data, meta_data_columns = 4, kmin, kmax, run_choice = 10){
+  setwd("LEA_analyses")  
+  write.geno(snp_data[,-(1:4)], "admixture_test.geno")
+  write.lfmm(snp_data[,-(1:4)], "admixture_test.lfmm")
+
+  admix_analysis = NULL
+  admix_analysis = snmf("admixture_test.geno", K = kmin:kmax, entropy = TRUE, repetitions = run_choice, project = "new")
+}
+```
+
+Admixture plot - super pop
+```{r}
+#Requires population data to be loaded in
+create_admixure_super_pop <- function(snmfdata, clusters, plot_name = "Admixture Plot"){
+  best_run = which.min(cross.entropy(snmfdata, K = clusters))
+  pop_data <- LEA::Q(snmfdata, K = clusters, run = best_run)
+  
+  # add a casewhen filter that can take a vector as an argument to be used as a filter for selecting data
+  pop_data <- cbind(population_data, pop_data) %>% 
+    as.tibble()
+  order_selection <- pop_data[order("pop"),] %>% 
+    pull(sample_ID)
+    
+  sample_ids <- pop_data$sample_ID
+  desired_order <- order_selection
+  reordered_sample_ids <- factor(sample_ids, levels = desired_order)
+  
+  pop_data$sample_ID <- fct_relevel(pop_data$sample_ID, levels(reordered_sample_ids))
+  pop_data_longer <- pivot_longer(pop_data, cols = starts_with("V"), names_to = "Population_K", values_to = "Origin") 
+  
+  superpop_filter <- c("AFR", "EUR", "SAS", "EAS", "AMR")
+      
+admix_plot <- ggplot(transform(pop_data_longer, super_pop=factor(super_pop, levels=superpop_filter))) + 
+  aes(x = sample_ID, y = Origin, fill = Population_K, color = Population_K) + 
+  geom_bar(stat = "identity", width = 1, show.legend = FALSE) + 
+  theme_minimal() + 
+  theme(axis.text.x = element_blank(),axis.title.x = element_blank(), axis.text.y = element_blank(), axis.ticks.y=element_blank(), axis.title.y = element_blank(), title = element_text(size = 68), strip.text = element_text(size = 42), panel.border = element_rect(color = "black", fill = NA, size = 4)) + 
+  facet_grid(.~super_pop,  scales = "free_x") + 
+  scale_fill_manual(values = c("tomato", "lightblue", "olivedrab", "gold", "darkblue", "pink")) + 
+  scale_color_manual(values = c("tomato", "lightblue","olivedrab", "gold", "darkblue", "pink")) + 
+  labs(title = element_text(paste(plot_name))) 
+  
+  print(admix_plot)
+}
+
+```
+
+Admixture plot - pop
+```{r}
+#Requires population data to be loaded in
+create_admixure_pop <- function(snmfdata, clusters, plot_name = "Admixture Plot"){
+  best_run = which.min(cross.entropy(snmfdata, K = clusters))
+  pop_data <- LEA::Q(snmfdata, K = clusters, run = best_run)
+  
+  # add a casewhen filter that can take a vector as an argument to be used as a filter for selecting data
+  pop_data <- cbind(population_data, pop_data) %>% 
+    as.tibble()
+  order_selection <- pop_data[order("pop"),] %>% 
+    pull(sample_ID)
+    
+  sample_ids <- pop_data$sample_ID
+  desired_order <- order_selection
+  reordered_sample_ids <- factor(sample_ids, levels = desired_order)
+  
+  pop_data$sample_ID <- fct_relevel(pop_data$sample_ID, levels(reordered_sample_ids))
+  pop_data_longer <- pivot_longer(pop_data, cols = starts_with("V"), names_to = "Population_K", values_to = "Origin") 
+  
+  pop_filter <- c("ACB", "ASW", "ESN", "GWD", "LWK", "MSL", "YRI", "CEU", "FIN", "GBR", "IBS", "TSI", "BEB", "GIH", "ITU", "PJL", "STU", "CDX", "CHB", "CHS", "JPT","KHV", "CLM", "MXL", "PEL", "PUR")
+      
+admix_plot <- ggplot(transform(pop_data_longer, pop=factor(pop, levels=pop_filter))) + 
+  aes(x = sample_ID, y = Origin, fill = Population_K, color = Population_K) + 
+  geom_bar(stat = "identity", width = 1, show.legend = FALSE) + 
+  theme_minimal() + 
+  theme(axis.text.x = element_blank(),axis.title.x = element_blank(), axis.text.y = element_blank(), axis.ticks.y=element_blank(), axis.title.y = element_blank(), title = element_text(size = 68), strip.text = element_text(size = 42), panel.border = element_rect(color = "black", fill = NA, size = 4)) + 
+  facet_grid(.~pop,  scales = "free_x") + 
+  scale_fill_manual(values = c("tomato", "lightblue", "olivedrab", "gold", "darkblue", "pink")) + 
+  scale_color_manual(values = c("tomato", "lightblue","olivedrab", "gold", "darkblue", "pink")) + 
+  labs(title = element_text(paste(plot_name))) 
+  
+  print(admix_plot)
+}
+```

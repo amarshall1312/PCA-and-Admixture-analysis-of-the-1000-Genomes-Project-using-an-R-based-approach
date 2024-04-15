@@ -1,0 +1,101 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+Maybe next development would be using subset of samples
+
+
+Creating directory for admixture data
+```{r}
+dir.create(here("code/LEA_analyses"))
+```
+
+Running an admixture analysis
+```{r}
+#requires a set of prapared snps, containing only values 0,1,2,9
+#by default assumes that the first 4 columns arent snp data but metadata that need removing for analysis
+#function will automatically write .geno and .lfmm files with a default name - Could add argument to function for choosing the name - same with working directory
+  #working directory is also assumed to be created prior and not created by function
+#default values are not set for K arguments but a default argument of repetitions is
+create_admixture_data <- function(snp_data, meta_data_columns = 4, kmin, kmax, run_choice = 10){
+  setwd("LEA_analyses")  
+  write.geno(snp_data[,-(1:4)], "admixture_test.geno")
+  write.lfmm(snp_data[,-(1:4)], "admixture_test.lfmm")
+
+  admix_analysis = NULL
+  admix_analysis = snmf("admixture_test.geno", K = kmin:kmax, entropy = TRUE, repetitions = run_choice, project = "new")
+}
+```
+
+Admixture plot - super pop
+```{r}
+#Requires population data to be loaded in
+create_admixure_super_pop <- function(snmfdata, clusters, plot_name = "Admixture Plot"){
+  best_run = which.min(cross.entropy(snmfdata, K = clusters))
+  pop_data <- LEA::Q(snmfdata, K = clusters, run = best_run)
+  
+  # add a casewhen filter that can take a vector as an argument to be used as a filter for selecting data
+  pop_data <- cbind(population_data, pop_data) %>% 
+    as.tibble()
+  order_selection <- pop_data[order("pop"),] %>% 
+    pull(sample_ID)
+    
+  sample_ids <- pop_data$sample_ID
+  desired_order <- order_selection
+  reordered_sample_ids <- factor(sample_ids, levels = desired_order)
+  
+  pop_data$sample_ID <- fct_relevel(pop_data$sample_ID, levels(reordered_sample_ids))
+  pop_data_longer <- pivot_longer(pop_data, cols = starts_with("V"), names_to = "Population_K", values_to = "Origin") 
+  
+  superpop_filter <- c("AFR", "EUR", "SAS", "EAS", "AMR")
+      
+admix_plot <- ggplot(transform(pop_data_longer, super_pop=factor(super_pop, levels=superpop_filter))) + 
+  aes(x = sample_ID, y = Origin, fill = Population_K, color = Population_K) + 
+  geom_bar(stat = "identity", width = 1, show.legend = FALSE) + 
+  theme_minimal() + 
+  theme(axis.text.x = element_blank(),axis.title.x = element_blank(), axis.text.y = element_blank(), axis.ticks.y=element_blank(), axis.title.y = element_blank(), title = element_text(size = 68), strip.text = element_text(size = 42), panel.border = element_rect(color = "black", fill = NA, size = 4)) + 
+  facet_grid(.~super_pop,  scales = "free_x") + 
+  scale_fill_manual(values = c("tomato", "lightblue", "olivedrab", "gold", "darkblue", "pink")) + 
+  scale_color_manual(values = c("tomato", "lightblue","olivedrab", "gold", "darkblue", "pink")) + 
+  labs(title = element_text(paste(plot_name))) 
+  
+  print(admix_plot)
+}
+
+```
+
+Admixture plot - pop
+```{r}
+#Requires population data to be loaded in
+create_admixure_pop <- function(snmfdata, clusters, plot_name = "Admixture Plot"){
+  best_run = which.min(cross.entropy(snmfdata, K = clusters))
+  pop_data <- LEA::Q(snmfdata, K = clusters, run = best_run)
+  
+  # add a casewhen filter that can take a vector as an argument to be used as a filter for selecting data
+  pop_data <- cbind(population_data, pop_data) %>% 
+    as.tibble()
+  order_selection <- pop_data[order("pop"),] %>% 
+    pull(sample_ID)
+    
+  sample_ids <- pop_data$sample_ID
+  desired_order <- order_selection
+  reordered_sample_ids <- factor(sample_ids, levels = desired_order)
+  
+  pop_data$sample_ID <- fct_relevel(pop_data$sample_ID, levels(reordered_sample_ids))
+  pop_data_longer <- pivot_longer(pop_data, cols = starts_with("V"), names_to = "Population_K", values_to = "Origin") 
+  
+  pop_filter <- c("ACB", "ASW", "ESN", "GWD", "LWK", "MSL", "YRI", "CEU", "FIN", "GBR", "IBS", "TSI", "BEB", "GIH", "ITU", "PJL", "STU", "CDX", "CHB", "CHS", "JPT","KHV", "CLM", "MXL", "PEL", "PUR")
+      
+admix_plot <- ggplot(transform(pop_data_longer, pop=factor(pop, levels=pop_filter))) + 
+  aes(x = sample_ID, y = Origin, fill = Population_K, color = Population_K) + 
+  geom_bar(stat = "identity", width = 1, show.legend = FALSE) + 
+  theme_minimal() + 
+  theme(axis.text.x = element_blank(),axis.title.x = element_blank(), axis.text.y = element_blank(), axis.ticks.y=element_blank(), axis.title.y = element_blank(), title = element_text(size = 68), strip.text = element_text(size = 42), panel.border = element_rect(color = "black", fill = NA, size = 4)) + 
+  facet_grid(.~pop,  scales = "free_x") + 
+  scale_fill_manual(values = c("tomato", "lightblue", "olivedrab", "gold", "darkblue", "pink")) + 
+  scale_color_manual(values = c("tomato", "lightblue","olivedrab", "gold", "darkblue", "pink")) + 
+  labs(title = element_text(paste(plot_name))) 
+  
+  print(admix_plot)
+}
+```
